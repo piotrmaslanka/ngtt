@@ -2,13 +2,11 @@ import logging
 import typing as tp
 
 import pkg_resources
-from OpenSSL import crypto
 from cryptography import x509
 from cryptography.hazmat.backends import default_backend
 from pyasn1.codec.der.decoder import decode
 from pyasn1.error import PyAsn1Error
 from satella.coding import rethrow_as
-from satella.coding.structures import Singleton
 from satella.files import read_in_file
 
 logger = logging.getLogger(__name__)
@@ -21,52 +19,23 @@ x509.oid._OID_NAMES[DEVICE_ID] = 'DeviceID'
 x509.oid._OID_NAMES[ENVIRONMENT] = 'Environment'
 
 
+def get_cert(cert_name: str):
+    ca_file = pkg_resources.resource_filename(__name__, '../certs/%s.crt' % (cert_name, ), )
+    return read_in_file(ca_file)
+
+
 def get_root_cert() -> bytes:
     """
     Return the bytes sequence for SMOK's master CA certificate
     """
-    ca_file = pkg_resources.resource_filename(__name__, '../certs/root.crt', )
-    return read_in_file(ca_file)
+    return get_cert('root')
 
 
 def get_dev_ca_cert() -> bytes:
     """
     Return the bytes sequence for SMOK's device signing CA
     """
-    ca_file = pkg_resources.resource_filename(__name__, '../certs/dev.crt', )
-    return read_in_file(ca_file)
-
-
-@Singleton
-class DevRootCertificateStore:
-    __slots__ = ('store',)
-
-    def add_certificate(self, name: str):
-        ca_file = pkg_resources.resource_filename(__name__, '../certs/%s' % (name,))
-        cert_pem_data = read_in_file(ca_file)
-        cert = crypto.load_certificate(crypto.FILETYPE_PEM, cert_pem_data)
-        self.store.add_cert(cert)
-
-    def __init__(self):
-        self.store = crypto.X509Store()
-        self.add_certificate('root.crt')
-        self.add_certificate('dev.crt')
-
-
-DevRootCertificateStore()
-
-
-def check_if_trusted(cert_data: bytes) -> bool:
-    try:
-        cert = crypto.load_certificate(crypto.FILETYPE_PEM, cert_data)
-    except crypto.Error:
-        raise ValueError('problem loading certificate - certificate is invalid')
-    store_ctx = crypto.X509StoreContext(DevRootCertificateStore().store, cert)
-    try:
-        store_ctx.verify_certificate()
-        return True
-    except crypto.Error:
-        return False
+    return get_cert('dev')
 
 
 def get_device_info(cert_data: bytes) -> tp.Tuple[str, int]:

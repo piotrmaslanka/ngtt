@@ -1,42 +1,44 @@
 import ssl
+import time
 import typing as tp
 import os
 import socket
-import struct
-
 import tempfile
 from ssl import SSLContext, PROTOCOL_TLS_CLIENT, SSLError
 
-from satella.coding import silence_excs
+from satella.coding import silence_excs, rethrow_as
 from satella.coding.concurrent import IDAllocator
 from satella.files import read_in_file
+
+from ..exceptions import ConnectionFailed
 from ..protocol import NGTPHeaderType, STRUCT_LHH, env_to_hostname
 from .certificates import get_device_info, get_dev_ca_cert, get_root_cert
 
 
-class ConnectionFailed(Exception):
-    pass
+PING_INTERVAL_TIME = 30
 
 
 class NGTTSocket:
-    def __init__(self, device: 'SMOKDevice', cert_file: str, key_file: str):
+    def __init__(self, cert_file: str, key_file: str):
         self.environment = get_device_info(read_in_file(cert_file))[1]
         self.host = env_to_hostname(self.environment)
-        self.device = device
         self.cert_file = cert_file
         self.key_file = key_file
         self.socket = None
         self.buffer = bytearray()
         self.w_buffer = bytearray()
+        self.ping_id = None
+        self.last_read = None
         self.socket.setblocking(False)
 
-        with tempfile.NamedTemporaryFile('w', delete=False) as chain_file:
+        with tempfile.NamedTemporaryFile('wb', delete=False) as chain_file:
             chain_file.write(read_in_file(self.cert_file))
             chain_file.write(get_dev_ca_cert())
             chain_file.write(get_root_cert())
         self.chain_file_name = chain_file.name
         self.id_assigner = IDAllocator(start_at=1)
 
+    @rethrow_as(ssl.SSLError, ConnectionFailed)
     @silence_excs(ssl.SSLWantWriteError)
     def send_frame(self, tid: int, header: NGTPHeaderType, data: bytes):
         """
@@ -51,6 +53,7 @@ class NGTTSocket:
         data_sent = self.socket.send(self.w_buffer)
         del self.w_buffer[:data_sent]
 
+    @rethrow_as(ssl.SSLError, ConnectionFailed)
     @silence_excs(ssl.SSLWantWriteError)
     def try_send(self):
         """
@@ -63,6 +66,20 @@ class NGTTSocket:
             except socket.timeout:
                 return
 
+    def try_ping(self):
+        if time.monotonic() - self.last_read > PING_INTERVAL_TIME and self.ping_id is None:
+            self.ping_id = self.id_assigner.allocate_int()
+            self.send_frame(self.ping_id, NGTPHeaderType.PING, b'')
+
+    def got_ping(self):
+        if self.ping_id is not None:
+            self.id_assigner.mark_as_free(self.ping_id)
+            self.ping_id = None
+
+    def fileno(self) -> int:
+        return self.socket.fileno()
+
+    @rethrow_as(ssl.SSLError, ConnectionFailed)
     @silence_excs(ssl.SSLWantReadError)
     def recv_frame(self) -> tp.Optional[tp.Tuple[int, NGTPHeaderType, bytes]]:
         """
@@ -70,9 +87,11 @@ class NGTTSocket:
 
         :return: a tuple of transaction ID, header type, data
         """
+        self.try_send()
         data = self.socket.recv(512)
         if not data:
             raise ConnectionFailed()
+        self.last_read = time.monotonic()
         self.buffer.extend(data)
         if len(self.buffer) > STRUCT_LHH.size:
             tid, h_type, length = STRUCT_LHH.unpack(self.buffer[:STRUCT_LHH.size])
@@ -112,4 +131,4 @@ class NGTTSocket:
             self.socket = ssl_sock
         except (socket.error, SSLError):
             raise ConnectionFailed()
-
+        self.last_read = time.monotonic()

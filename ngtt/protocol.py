@@ -12,6 +12,7 @@ class NGTPHeaderType(HashableIntEnum):
     DATA_STREAM_CONFIRM = 5
     DATA_STREAM_REJECT = 6
 
+
 STRUCT_LHH = struct.Struct('>LHH')
 
 
