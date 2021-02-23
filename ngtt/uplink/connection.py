@@ -29,7 +29,8 @@ def must_be_connected(fun):
 
 class NGTTSocket(Closeable):
     __slots__ = ('host', 'cert_file', 'key_file', 'socket',
-                 'buffer', 'w_buffer', 'ping_id', 'last_read', 'connected')
+                 'buffer', 'w_buffer', 'ping_id', 'last_read', 'connected',
+                 'chain_file_name', 'id_assigner')
 
     def __init__(self, cert_file: str, key_file: str):
         super().__init__()
@@ -42,12 +43,13 @@ class NGTTSocket(Closeable):
         self.w_buffer = bytearray()
         self.ping_id = None
         self.last_read = None
-        self.socket.setblocking(False)
         self.connected = False
 
         with tempfile.NamedTemporaryFile('wb', delete=False) as chain_file:
             chain_file.write(read_in_file(self.cert_file))
+            chain_file.write(b'\n')
             chain_file.write(get_dev_ca_cert())
+            chain_file.write(b'\n')
             chain_file.write(get_root_cert())
         self.chain_file_name = chain_file.name
         self.id_assigner = IDAllocator(start_at=1)
@@ -123,7 +125,7 @@ class NGTTSocket(Closeable):
             del self.buffer[:STRUCT_LHH.size+length]
             return tid, NGTTHeaderType(h_type), data
 
-    def close(self):
+    def close(self, wait_for_me: bool = True):
         if super().close():
             self.disconnect()
             os.unlink(self.chain_file_name)
@@ -149,6 +151,7 @@ class NGTTSocket(Closeable):
         ssl_context.load_cert_chain(self.chain_file_name, self.key_file)
         ssl_context.verify_mode = CERT_REQUIRED
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.settimeout(10)
         ssl_sock = ssl_context.wrap_socket(sock, server_hostname=self.host)
         try:
             ssl_sock.connect((self.host, 2408))
@@ -156,6 +159,7 @@ class NGTTSocket(Closeable):
             self.socket = ssl_sock
         except (socket.error, SSLError):
             raise ConnectionFailed()
+        self.socket.setblocking(False)
         self.last_read = time.monotonic()
         self.buffer = bytearray()
         self.w_buffer = bytearray()

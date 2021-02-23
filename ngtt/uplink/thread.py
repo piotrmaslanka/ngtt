@@ -1,6 +1,7 @@
 from concurrent.futures import Future
 
-from satella.coding import Closeable, wraps
+from satella.coding import Closeable, wraps, silence_excs
+from satella.coding.decorators import retry
 from satella.coding.predicates import x
 from satella.coding.sequences import index_of
 
@@ -28,7 +29,6 @@ def must_be_connected(fun):
     return outer
 
 
-
 class NGTTConnection(TerminableThread):
 
     def __init__(self, cert_file: str, key_file: str,
@@ -42,7 +42,19 @@ class NGTTConnection(TerminableThread):
         self.op_id_to_op = {}   # type: tp.Dict[int, Future]
 
     def prepare(self) -> None:
-        self.connect()
+        while not self._terminating:
+            with silence_excs(ConnectionFailed):
+                self.connect()
+
+    def stop(self, wait_for_completion: bool = True):
+        """
+        Stop this thread and the connection
+
+        :param wait_for_completion: whether to wait for thread to terminate
+        """
+        self.terminate()
+        if wait_for_completion:
+            self.join()
 
     def cleanup(self):
         if self.current_connection is not None:
