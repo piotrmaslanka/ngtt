@@ -8,3 +8,7 @@ class ConnectionFailed(NGTTError):
 
 class DataStreamSyncFailed(NGTTError):
     pass
+
+
+class InvalidFrame(NGTTError):
+    pass
