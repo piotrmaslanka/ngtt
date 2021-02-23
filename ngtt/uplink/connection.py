@@ -11,7 +11,7 @@ from satella.coding.concurrent import IDAllocator
 from satella.files import read_in_file
 
 from ..exceptions import ConnectionFailed
-from ..protocol import NGTPHeaderType, STRUCT_LHH, env_to_hostname
+from ..protocol import NGTTHeaderType, STRUCT_LHH, env_to_hostname
 from .certificates import get_device_info, get_dev_ca_cert, get_root_cert
 
 
@@ -55,7 +55,7 @@ class NGTTSocket(Closeable):
     @rethrow_as(ssl.SSLError, ConnectionFailed)
     @silence_excs(ssl.SSLWantWriteError)
     @must_be_connected
-    def send_frame(self, tid: int, header: NGTPHeaderType, data: bytes = b'') -> None:
+    def send_frame(self, tid: int, header: NGTTHeaderType, data: bytes = b'') -> None:
         """
         Schedule a frame to be sent
 
@@ -88,7 +88,7 @@ class NGTTSocket(Closeable):
     def try_ping(self):
         if time.monotonic() - self.last_read > PING_INTERVAL_TIME and self.ping_id is None:
             self.ping_id = self.id_assigner.allocate_int()
-            self.send_frame(self.ping_id, NGTPHeaderType.PING, b'')
+            self.send_frame(self.ping_id, NGTTHeaderType.PING, b'')
 
     @must_be_connected
     def got_ping(self):
@@ -102,7 +102,7 @@ class NGTTSocket(Closeable):
     @rethrow_as(ssl.SSLError, ConnectionFailed)
     @silence_excs(ssl.SSLWantReadError)
     @must_be_connected
-    def recv_frame(self) -> tp.Optional[tp.Tuple[int, NGTPHeaderType, bytes]]:
+    def recv_frame(self) -> tp.Optional[tp.Tuple[int, NGTTHeaderType, bytes]]:
         """
         Receive a frame from remote socket
 
@@ -121,7 +121,7 @@ class NGTTSocket(Closeable):
                 return
             data = self.buffer[STRUCT_LHH.size:STRUCT_LHH.size+length]
             del self.buffer[:STRUCT_LHH.size+length]
-            return tid, NGTPHeaderType(h_type), data
+            return tid, NGTTHeaderType(h_type), data
 
     def close(self):
         if super().close():

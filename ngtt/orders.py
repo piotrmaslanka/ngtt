@@ -1,6 +1,6 @@
 import typing as tp
 
-from ngtt.protocol import NGTPHeaderType
+from ngtt.protocol import NGTTHeaderType
 
 
 class Order:
@@ -23,5 +23,5 @@ class Order:
         Signal to the server that the order has been processed
         """
         if not self.confirmed:
-            self.sock.send_frame(self.tid, NGTPHeaderType.ORDER_CONFIRM, b'')
+            self.sock.send_frame(self.tid, NGTTHeaderType.ORDER_CONFIRM, b'')
             self.confirmed = True

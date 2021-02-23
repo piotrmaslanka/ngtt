@@ -4,7 +4,8 @@ import struct
 from satella.coding.structures import HashableIntEnum
 from .exceptions import InvalidFrame
 
-class NGTPHeaderType(HashableIntEnum):
+
+class NGTTHeaderType(HashableIntEnum):
     PING = 0
     ORDER = 1
     ORDER_CONFIRM = 2
@@ -18,7 +19,7 @@ STRUCT_LHH = struct.Struct('>LHH')
 
 
 class NGTTFrame:
-    def __init__(self, tid: int, packet_type: NGTPHeaderType, data: bytes):
+    def __init__(self, tid: int, packet_type: NGTTHeaderType, data: bytes):
         self.tid = tid
         self.packet_type = packet_type
         self.data = data
@@ -31,7 +32,9 @@ class NGTTFrame:
 
     @classmethod
     def from_bytes(cls, b: tp.Union[bytes, bytearray]) -> 'NGTTFrame':
-        lne, tid, htype = STRUCT_LHH.unpack(b[:STRUCT_LHH.size])
+        length, tid, h_type = STRUCT_LHH.unpack(b[:STRUCT_LHH.size])
+        return NGTTFrame(tid, NGTTHeaderType(h_type), b[STRUCT_LHH.size:STRUCT_LHH.size+length])
+
 
 def env_to_hostname(env: int) -> str:
     if env == 0:

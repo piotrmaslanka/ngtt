@@ -13,7 +13,7 @@ import select
 from satella.coding.concurrent import TerminableThread
 
 from ..exceptions import DataStreamSyncFailed, ConnectionFailed
-from ..protocol import NGTPHeaderType
+from ..protocol import NGTTHeaderType
 from .connection import NGTTSocket
 
 
@@ -26,7 +26,7 @@ class NGTTConnection(TerminableThread):
         self.cert_file = cert_file
         self.key_file = key_file
         self.current_connection = None
-        self.currently_running_ops = []  # type: tp.List[tp.Tuple[NGTPHeaderType, dict, Future]]
+        self.currently_running_ops = []  # type: tp.List[tp.Tuple[NGTTHeaderType, dict, Future]]
         self.op_id_to_op = {}   # type: tp.Dict[int, Future]
 
     def prepare(self) -> None:
@@ -57,16 +57,16 @@ class NGTTConnection(TerminableThread):
         if frame is None:
             return
         tid, packet_type, data = frame
-        if packet_type == NGTPHeaderType.PING:
+        if packet_type == NGTTHeaderType.PING:
             self.current_connection.got_ping()
-        elif packet_type == NGTPHeaderType.ORDER:
+        elif packet_type == NGTTHeaderType.ORDER:
             try:
                 data = json.loads(data.decode('utf-8'))
             except ValueError:
                 raise ConnectionFailed('Got invalid JSON')
             order = Order(data, tid, self.current_connection)
             self.on_new_order(order)
-        elif packet_type in (NGTPHeaderType.DATA_STREAM_REJECT, NGTPHeaderType.DATA_STREAM_CONFIRM):
+        elif packet_type in (NGTTHeaderType.DATA_STREAM_REJECT, NGTTHeaderType.DATA_STREAM_CONFIRM):
             if tid in self.op_id_to_op:
                 # Assume it's a data stream running
                 fut = self.op_id_to_op.pop(tid)
@@ -74,9 +74,9 @@ class NGTTConnection(TerminableThread):
                 index = index_of(x[2] == fut, self.currently_running_ops)
                 del self.currently_running_ops[index]
 
-                if packet_type == NGTPHeaderType.DATA_STREAM_CONFIRM:
+                if packet_type == NGTTHeaderType.DATA_STREAM_CONFIRM:
                     fut.set_result(None)
-                elif packet_type == NGTPHeaderType.DATA_STREAM_REJECT:
+                elif packet_type == NGTTHeaderType.DATA_STREAM_REJECT:
                     fut.set_exception(DataStreamSyncFailed())
 
     def loop(self) -> None:
@@ -86,6 +86,6 @@ class NGTTConnection(TerminableThread):
             self.cleanup()
             self.connect()
 
-    def add_op(self, op_type: NGTPHeaderType, data: tp.Union[dict, list]):
+    def add_op(self, op_type: NGTTHeaderType, data: tp.Union[dict, list]):
         pass
 
