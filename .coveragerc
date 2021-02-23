@@ -1,0 +1,15 @@
+[run]
+branch=1
+source=
+  ngtt
+concurrency=thread
+omit=
+  tests/*
+  .eggs/*
+  setup.py
+  ngtt/__init__.py
+
+[report]
+include=
+    ngtt/*
+
