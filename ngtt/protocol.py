@@ -33,6 +33,8 @@ class NGTTFrame:
     @classmethod
     def from_bytes(cls, b: tp.Union[bytes, bytearray]) -> 'NGTTFrame':
         length, tid, h_type = STRUCT_LHH.unpack(b[:STRUCT_LHH.size])
+        if h_type > NGTTHeaderType.DATA_STREAM_REJECT.value:
+            raise InvalidFrame('Unrecognized packet type %s' % (h_type, ))
         return NGTTFrame(tid, NGTTHeaderType(h_type), b[STRUCT_LHH.size:STRUCT_LHH.size+length])
 
 
