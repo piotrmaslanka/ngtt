@@ -11,7 +11,7 @@ from satella.coding.concurrent import IDAllocator
 from satella.files import read_in_file
 
 from ..exceptions import ConnectionFailed
-from ..protocol import NGTTHeaderType, STRUCT_LHH, env_to_hostname
+from ..protocol import NGTTHeaderType, STRUCT_LHH, env_to_hostname, NGTTFrame
 from .certificates import get_device_info, get_dev_ca_cert, get_root_cert
 
 
@@ -31,6 +31,10 @@ class NGTTSocket(Closeable):
     __slots__ = ('host', 'cert_file', 'key_file', 'socket',
                  'buffer', 'w_buffer', 'ping_id', 'last_read', 'connected',
                  'chain_file_name', 'id_assigner')
+
+    @property
+    def wants_write(self) -> bool:
+        return bool(self.w_buffer)
 
     def __init__(self, cert_file: str, key_file: str):
         super().__init__()
@@ -104,14 +108,13 @@ class NGTTSocket(Closeable):
     @rethrow_as(ssl.SSLError, ConnectionFailed)
     @silence_excs(ssl.SSLWantReadError)
     @must_be_connected
-    def recv_frame(self) -> tp.Optional[tp.Tuple[int, NGTTHeaderType, bytes]]:
+    def recv_frame(self) -> tp.Optional[NGTTFrame]:
         """
         Receive a frame from remote socket
 
         :raises ConnectionFailed: connection closed
         :return: a tuple of transaction ID, header type, data
         """
-        self.try_send()
         data = self.socket.recv(512)
         if not data:
             raise ConnectionFailed()
@@ -123,7 +126,7 @@ class NGTTSocket(Closeable):
                 return
             data = self.buffer[STRUCT_LHH.size:STRUCT_LHH.size+length]
             del self.buffer[:STRUCT_LHH.size+length]
-            return tid, NGTTHeaderType(h_type), data
+            return NGTTFrame(tid, NGTTHeaderType(h_type), data)
 
     def close(self, wait_for_me: bool = True):
         if super().close():
@@ -137,6 +140,7 @@ class NGTTSocket(Closeable):
         if self.socket is not None:
             self.socket.close()
             self.socket = None
+            self.connected = False
 
     def connect(self):
         """
@@ -144,7 +148,7 @@ class NGTTSocket(Closeable):
 
         :raises SSLError: an error occurred
         """
-        if self.socket is not None:
+        if self.connected:
             return
         ssl_context = SSLContext(PROTOCOL_TLS_CLIENT)
         ssl_context.load_verify_locations(cadata=get_root_cert().decode('utf-8'))
@@ -153,12 +157,10 @@ class NGTTSocket(Closeable):
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.settimeout(10)
         ssl_sock = ssl_context.wrap_socket(sock, server_hostname=self.host)
-        try:
+        with rethrow_as((socket.error, SSLError), ConnectionFailed):
             ssl_sock.connect((self.host, 2408))
             ssl_sock.do_handshake()
-            self.socket = ssl_sock
-        except (socket.error, SSLError):
-            raise ConnectionFailed()
+        self.socket = ssl_sock
         self.socket.setblocking(False)
         self.last_read = time.monotonic()
         self.buffer = bytearray()

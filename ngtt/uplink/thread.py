@@ -1,6 +1,7 @@
+import logging
 from concurrent.futures import Future
 
-from satella.coding import Closeable, wraps, silence_excs
+from satella.coding import Closeable, wraps, silence_excs, for_argument
 from satella.coding.decorators import retry
 from satella.coding.predicates import x
 from satella.coding.sequences import index_of
@@ -20,6 +21,8 @@ from ..protocol import NGTTHeaderType
 from .connection import NGTTSocket
 
 
+logger = logging.getLogger(__name__)
+
 def must_be_connected(fun):
     @wraps(fun)
     def outer(self, *args, **kwargs):
@@ -29,7 +32,19 @@ def must_be_connected(fun):
     return outer
 
 
+def encode_data(y) -> bytes:
+    return json.dumps(y).encode('utf-8')
+
+
 class NGTTConnection(TerminableThread):
+    """
+    A thread maintaining connection in the background.
+
+    Note that instantiating this object is the same as calling start. You do not need to call
+    start on this object after you initialize it.
+
+    :ivar connected (bool) is connection opened
+    """
 
     def __init__(self, cert_file: str, key_file: str,
                  on_new_order: tp.Callable[[Order], None]):
@@ -37,14 +52,11 @@ class NGTTConnection(TerminableThread):
         self.on_new_order = on_new_order
         self.cert_file = cert_file
         self.key_file = key_file
+        self.connected = False
         self.current_connection = None
         self.currently_running_ops = []  # type: tp.List[tp.Tuple[NGTTHeaderType, bytes, Future]]
         self.op_id_to_op = {}   # type: tp.Dict[int, Future]
-
-    def prepare(self) -> None:
-        while not self._terminating:
-            with silence_excs(ConnectionFailed):
-                self.connect()
+        self.start()
 
     def stop(self, wait_for_completion: bool = True):
         """
@@ -58,11 +70,13 @@ class NGTTConnection(TerminableThread):
 
     def cleanup(self):
         if self.current_connection is not None:
+            self.connected = False
             self.current_connection.close()
             self.current_connection = None
+            self.op_id_to_op = {}
 
     def connect(self):
-        if self.current_connection is not None:
+        if self.connected is not None:
             return
         self.current_connection = NGTTSocket(self.cert_file, self.key_file)
         self.current_connection.connect()
@@ -71,9 +85,11 @@ class NGTTConnection(TerminableThread):
             id_ = self.current_connection.id_assigner.allocate_int()
             self.current_connection.send_frame(id_, h_type, data)
             self.op_id_to_op[id_] = fut
+        self.connected = True
 
     @must_be_connected
-    def sync_pathpoints(self, data: tp.List) -> Future:
+    @for_argument(None, encode_data)
+    def sync_pathpoints(self, data) -> Future:
         """
         Try to synchronize pathpoints.
 
@@ -86,78 +102,97 @@ class NGTTConnection(TerminableThread):
         fut = Future()
         fut.set_running_or_notify_cancel()
         tid = self.current_connection.id_assigner.allocate_int()
-        data = json.dumps(data).encode('utf-8')
         self.currently_running_ops.append((NGTTHeaderType.DATA_STREAM, data, fut))
-        self.current_connection.send_frame(tid, NGTTHeaderType.DATA_STREAM, data)
+        try:
+            self.current_connection.send_frame(tid, NGTTHeaderType.DATA_STREAM, data)
+        except ConnectionFailed:
+            self.cleanup()
+            raise
         self.op_id_to_op[tid] = fut
         return fut
 
     def inner_loop(self):
         self.current_connection.try_ping()
-        rx = select.select([self.current_connection], [], [], timeout=5)[0]
+        rx, wx, ex = select.select([self.current_connection], [self.current_connection] if self.current_connection.wants_write else [], [], timeout=5)
         if not rx:
             return
+        if wx:
+            self.current_connection.try_send()
         frame = self.current_connection.recv_frame()
         if frame is None:
             return
-        tid, packet_type, data = frame
-        if packet_type == NGTTHeaderType.PING:
+        if frame.packet_type == NGTTHeaderType.PING:
             self.current_connection.got_ping()
-        elif packet_type == NGTTHeaderType.ORDER:
+        elif frame.packet_type == NGTTHeaderType.ORDER:
             try:
-                data = json.loads(data.decode('utf-8'))
+                data = json.loads(frame.data.decode('utf-8'))
             except ValueError:
                 raise ConnectionFailed('Got invalid JSON')
-            order = Order(data, tid, self.current_connection)
+            order = Order(data, frame.tid, self.current_connection)
             self.on_new_order(order)
-        elif packet_type in (NGTTHeaderType.DATA_STREAM_REJECT, NGTTHeaderType.DATA_STREAM_CONFIRM):
-            if tid in self.op_id_to_op:
+        elif frame.packet_type in (NGTTHeaderType.DATA_STREAM_REJECT, NGTTHeaderType.DATA_STREAM_CONFIRM):
+            if frame.tid in self.op_id_to_op:
                 # Assume it's a data stream running
-                fut = self.op_id_to_op.pop(tid)
+                fut = self.op_id_to_op.pop(frame.tid)
 
                 index = index_of(x[2] == fut, self.currently_running_ops)
                 del self.currently_running_ops[index]
 
-                if packet_type == NGTTHeaderType.DATA_STREAM_CONFIRM:
+                if frame.packet_type == NGTTHeaderType.DATA_STREAM_CONFIRM:
                     fut.set_result(None)
-                elif packet_type == NGTTHeaderType.DATA_STREAM_REJECT:
+                elif frame.packet_type == NGTTHeaderType.DATA_STREAM_REJECT:
                     fut.set_exception(DataStreamSyncFailed())
         elif packet_type == NGTTHeaderType.SYNC_BAOB_RESPONSE:
-            if tid in self.op_id_to_op:
-                fut = self.op_id_to_op.pop(tid)
+            if frame.tid in self.op_id_to_op:
+                fut = self.op_id_to_op.pop(frame.tid)
 
                 index = index_of(x[2] == fut, self.currently_running_ops)
                 del self.currently_running_ops[index]
 
-                fut.set_result(json.loads(data.decode('utf8')))
+                fut.set_result(frame.real_data)
 
     def loop(self) -> None:
         try:
+            while not self.connected and not self.terminating:
+                self.connect()
+            if self.terminating:
+                return
             self.inner_loop()
         except ConnectionFailed:
+            logger.debug('Connection failed, retrying')
             self.cleanup()
-            self.connect()
+            try:
+                self.connect()
+            except ConnectionFailed:
+                pass
 
     @must_be_connected
-    def sync_baobs(self, baobs: tp.Dict[str, int]) -> Future:
+    @for_argument(None, encode_data)
+    def sync_baobs(self, baobs) -> Future:
         """
         Request to synchronize BAOBs
 
-        :param baobs: a dictionary of locally kept BAOB name => local version
+        :param baobs: a dictionary of locally kept BAOB name => local version (tp.Dict[str, int])
         :return: a Future that will receive a result of dict
         {"download": [.. list of BAOBs to download from the server ..],
          "upload": [.. list of BAOBs to upload to the server ..]}
+
+        :raises ConnectionFailed: connection failed
         """
         fut = Future()
         fut.set_running_or_notify_cancel()
         tid = self.current_connection.id_assigner.allocate_int()
-        data = json.dumps(baobs).encode('utf-8')
-        self.currently_running_ops.append((NGTTHeaderType.SYNC_BAOB_REQUEST, data, fut))
-        self.current_connection.send_frame(tid, NGTTHeaderType.SYNC_BAOB_REQUEST, data)
+        self.currently_running_ops.append((NGTTHeaderType.SYNC_BAOB_REQUEST, baobs, fut))
+        try:
+            self.current_connection.send_frame(tid, NGTTHeaderType.SYNC_BAOB_REQUEST, baobs)
+        except ConnectionFailed:
+            self.cleanup()
+            raise
         self.op_id_to_op[tid] = fut
         return fut
 
     @must_be_connected
+    @for_argument(None, encode_data)
     def stream_logs(self, data: tp.List) -> None:
         """
         Stream logs to the server
@@ -166,7 +201,10 @@ class NGTTConnection(TerminableThread):
 
         :param data: the same thing that you would PUT /v1/device/device_logs
         """
-        data = json.dumps(data).encode('utf-8')
-        self.current_connection.send_frame(0, NGTTHeaderType.LOGS, data)
+        try:
+            self.current_connection.send_frame(0, NGTTHeaderType.LOGS, data)
+        except ConnectionFailed:
+            self.cleanup()
+            raise
 
 

@@ -12,6 +12,7 @@ Welcome to NGTT's documentation!
 
    starting
    advanced
+   exceptions
 
 
 Indices and tables

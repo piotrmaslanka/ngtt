@@ -15,8 +15,7 @@ if __name__ == '__main__':
     logging.getLogger('urllib3.connectionpool').setLevel(logging.WARN)
 
     ngtt = NGTTConnection('dev.crt', 'key.crt', on_new_order=on_order)
-    ngtt.connect()
 
     hang_until_sig()
 
-    ngtt.close()
+    ngtt.stop()

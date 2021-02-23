@@ -1,3 +1,7 @@
+try:
+    import ujson as json
+except ImportError:
+    import json
 import typing as tp
 import struct
 
@@ -25,6 +29,13 @@ class NGTTFrame:
         self.tid = tid
         self.packet_type = packet_type
         self.data = data
+
+    @property
+    def real_data(self) -> tp.Union[dict, list]:
+        """
+        :return: JSON unserialized data
+        """
+        return json.loads(self.data.decode('utf-8'))
 
     def __len__(self):
         return STRUCT_LHH.size + len(self.data)
