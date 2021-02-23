@@ -6,13 +6,15 @@ from .exceptions import InvalidFrame
 
 
 class NGTTHeaderType(HashableIntEnum):
-    PING = 0
-    ORDER = 1
-    ORDER_CONFIRM = 2
-    LOGS = 3
-    DATA_STREAM = 4
-    DATA_STREAM_CONFIRM = 5
-    DATA_STREAM_REJECT = 6
+    PING = 0        #: a PING, sent by the client, server responds alike
+    ORDER = 1       #: sent by the server
+    ORDER_CONFIRM = 2   #: sent by the client
+    LOGS = 3            #: sent by the client
+    DATA_STREAM = 4             #: sent by the client
+    DATA_STREAM_CONFIRM = 5     #: sent by the server
+    DATA_STREAM_REJECT = 6      #: sent by the server
+    SYNC_BAOB_REQUEST = 7       #: sent by the client
+    SYNC_BAOB_RESPONSE = 8      #: sent by the server
 
 
 STRUCT_LHH = struct.Struct('>LHH')
