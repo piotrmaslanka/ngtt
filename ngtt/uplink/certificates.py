@@ -20,7 +20,7 @@ x509.oid._OID_NAMES[ENVIRONMENT] = 'Environment'
 
 
 def get_cert(cert_name: str):
-    ca_file = pkg_resources.resource_filename(__name__, '../certs/%s.crt' % (cert_name, ), )
+    ca_file = pkg_resources.resource_filename(__name__, '../certs/%s.crt' % (cert_name,), )
     return read_in_file(ca_file)
 
 

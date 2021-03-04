@@ -1,19 +1,18 @@
-import ssl
-import time
-import typing as tp
 import os
 import socket
+import ssl
 import tempfile
+import time
+import typing as tp
 from ssl import SSLContext, PROTOCOL_TLS_CLIENT, SSLError, CERT_REQUIRED
 
 from satella.coding import silence_excs, rethrow_as, Closeable, wraps
 from satella.coding.concurrent import IDAllocator
 from satella.files import read_in_file
 
+from .certificates import get_device_info, get_dev_ca_cert, get_root_cert
 from ..exceptions import ConnectionFailed
 from ..protocol import NGTTHeaderType, STRUCT_LHH, env_to_hostname, NGTTFrame
-from .certificates import get_device_info, get_dev_ca_cert, get_root_cert
-
 
 PING_INTERVAL_TIME = 30
 
@@ -24,6 +23,7 @@ def must_be_connected(fun):
         if not self.connected:
             self.connect()
         return fun(self, *args, **kwargs)
+
     return outer
 
 
@@ -124,8 +124,8 @@ class NGTTSocket(Closeable):
             length, tid, h_type = STRUCT_LHH.unpack(self.buffer[:STRUCT_LHH.size])
             if len(self.buffer) < STRUCT_LHH.size + length:
                 return
-            data = self.buffer[STRUCT_LHH.size:STRUCT_LHH.size+length]
-            del self.buffer[:STRUCT_LHH.size+length]
+            data = self.buffer[STRUCT_LHH.size:STRUCT_LHH.size + length]
+            del self.buffer[:STRUCT_LHH.size + length]
             return NGTTFrame(tid, NGTTHeaderType(h_type), data)
 
     def close(self, wait_for_me: bool = True):

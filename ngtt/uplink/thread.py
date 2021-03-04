@@ -1,10 +1,10 @@
 import logging
 from concurrent.futures import Future
 
-from satella.coding import Closeable, wraps, silence_excs, for_argument
-from satella.coding.decorators import retry
+from satella.coding import wraps, for_argument
 from satella.coding.predicates import x
 from satella.coding.sequences import index_of
+from satella.time import ExponentialBackoff
 
 from ..orders import Order
 
@@ -20,8 +20,8 @@ from ..exceptions import DataStreamSyncFailed, ConnectionFailed
 from ..protocol import NGTTHeaderType
 from .connection import NGTTSocket
 
-
 logger = logging.getLogger(__name__)
+
 
 def must_be_connected(fun):
     @wraps(fun)
@@ -29,6 +29,7 @@ def must_be_connected(fun):
         if self.current_connection is None:
             self.connect()
         return fun(self, *args, **kwargs)
+
     return outer
 
 
@@ -55,7 +56,7 @@ class NGTTConnection(TerminableThread):
         self.connected = False
         self.current_connection = None
         self.currently_running_ops = []  # type: tp.List[tp.Tuple[NGTTHeaderType, bytes, Future]]
-        self.op_id_to_op = {}   # type: tp.Dict[int, Future]
+        self.op_id_to_op = {}  # type: tp.Dict[int, Future]
         self.start()
 
     def stop(self, wait_for_completion: bool = True):
@@ -76,10 +77,18 @@ class NGTTConnection(TerminableThread):
             self.op_id_to_op = {}
 
     def connect(self):
-        if self.connected is not None:
+        if self.connected:
             return
-        self.current_connection = NGTTSocket(self.cert_file, self.key_file)
-        self.current_connection.connect()
+        eb = ExponentialBackoff(1, 30, self.safe_sleep)
+        while not self.terminating:
+            try:
+                self.current_connection = NGTTSocket(self.cert_file, self.key_file)
+                self.current_connection.connect()
+            except ConnectionFailed:
+                logger.debug('Failure reconnecting')
+                eb.failed()
+                eb.sleep()
+
         self.op_id_to_op = {}
         for h_type, data, fut in self.currently_running_ops:
             id_ = self.current_connection.id_assigner.allocate_int()
@@ -113,7 +122,8 @@ class NGTTConnection(TerminableThread):
 
     def inner_loop(self):
         self.current_connection.try_ping()
-        rx, wx, ex = select.select([self.current_connection], [self.current_connection] if self.current_connection.wants_write else [], [], timeout=5)
+        rx, wx, ex = select.select([self.current_connection], [
+            self.current_connection] if self.current_connection.wants_write else [], [], timeout=5)
         if not rx:
             return
         if wx:
@@ -130,7 +140,8 @@ class NGTTConnection(TerminableThread):
                 raise ConnectionFailed('Got invalid JSON')
             order = Order(data, frame.tid, self.current_connection)
             self.on_new_order(order)
-        elif frame.packet_type in (NGTTHeaderType.DATA_STREAM_REJECT, NGTTHeaderType.DATA_STREAM_CONFIRM):
+        elif frame.packet_type in (
+        NGTTHeaderType.DATA_STREAM_REJECT, NGTTHeaderType.DATA_STREAM_CONFIRM):
             if frame.tid in self.op_id_to_op:
                 # Assume it's a data stream running
                 fut = self.op_id_to_op.pop(frame.tid)
@@ -206,5 +217,3 @@ class NGTTConnection(TerminableThread):
         except ConnectionFailed:
             self.cleanup()
             raise
-
-
