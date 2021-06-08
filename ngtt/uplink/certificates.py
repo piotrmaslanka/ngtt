@@ -6,7 +6,7 @@ from cryptography import x509
 from cryptography.hazmat.backends import default_backend
 from pyasn1.codec.der.decoder import decode
 from pyasn1.error import PyAsn1Error
-from satella.coding import rethrow_as
+from satella.coding import reraise_as
 from satella.files import read_in_file
 
 logger = logging.getLogger(__name__)
@@ -66,5 +66,5 @@ def get_device_info(cert_data: bytes) -> tp.Tuple[str, int]:
     except ValueError as e:
         raise ValueError('unrecognized environment: %s' % (e,))
 
-    with rethrow_as(ValueError, ValueError):
+    with reraise_as(ValueError, ValueError):
         return device_id, environment

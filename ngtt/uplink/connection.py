@@ -6,7 +6,7 @@ import time
 import typing as tp
 from ssl import SSLContext, PROTOCOL_TLS_CLIENT, SSLError, CERT_REQUIRED
 
-from satella.coding import silence_excs, rethrow_as, Closeable, wraps
+from satella.coding import silence_excs, reraise_as, Closeable, wraps
 from satella.coding.concurrent import IDAllocator
 from satella.files import read_in_file
 
@@ -58,7 +58,7 @@ class NGTTSocket(Closeable):
         self.chain_file_name = chain_file.name
         self.id_assigner = IDAllocator(start_at=1)
 
-    @rethrow_as(ssl.SSLError, ConnectionFailed)
+    @reraise_as(ssl.SSLError, ConnectionFailed)
     @silence_excs(ssl.SSLWantWriteError)
     @must_be_connected
     def send_frame(self, tid: int, header: NGTTHeaderType, data: bytes = b'') -> None:
@@ -76,7 +76,7 @@ class NGTTSocket(Closeable):
         data_sent = self.socket.send(self.w_buffer)
         del self.w_buffer[:data_sent]
 
-    @rethrow_as(ssl.SSLError, ConnectionFailed)
+    @reraise_as(ssl.SSLError, ConnectionFailed)
     @silence_excs(ssl.SSLWantWriteError)
     @must_be_connected
     def try_send(self):
@@ -105,7 +105,7 @@ class NGTTSocket(Closeable):
     def fileno(self) -> int:
         return self.socket.fileno()
 
-    @rethrow_as(ssl.SSLError, ConnectionFailed)
+    @reraise_as(ssl.SSLError, ConnectionFailed)
     @silence_excs(ssl.SSLWantReadError)
     @must_be_connected
     def recv_frame(self) -> tp.Optional[NGTTFrame]:
@@ -157,7 +157,7 @@ class NGTTSocket(Closeable):
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.settimeout(10)
         ssl_sock = ssl_context.wrap_socket(sock, server_hostname=self.host)
-        with rethrow_as((socket.error, SSLError), ConnectionFailed):
+        with reraise_as((socket.error, SSLError), ConnectionFailed):
             ssl_sock.connect((self.host, 2408))
             ssl_sock.do_handshake()
         self.socket = ssl_sock
