@@ -57,10 +57,12 @@ class NGTTSocket(Closeable):
                 chain_file.write(get_dev_ca_cert())
                 chain_file.write(b'\n')
                 chain_file.write(get_root_cert())
+                chain_file.close()
+                self.chain_file_name = chain_file.name
         except Exception as e:
             logger.error('Found exception %s', e, exc_info=e)
             raise
-        self.chain_file_name = chain_file.name
+
         self.id_assigner = IDAllocator(start_at=1)
         super().__init__()
 
