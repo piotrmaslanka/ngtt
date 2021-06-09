@@ -28,21 +28,17 @@ def must_be_connected(fun):
 
 
 class NGTTSocket(Closeable):
-    __slots__ = ('host', 'cert_file', 'key_file', 'socket',
-                 'buffer', 'w_buffer', 'ping_id', 'last_read', 'connected',
-                 'chain_file_name', 'id_assigner')
-
     @property
     def wants_write(self) -> bool:
         return bool(self.w_buffer)
 
     def __init__(self, cert_file: str, key_file: str):
+        self.socket = None
         super().__init__()
         environment = get_device_info(read_in_file(cert_file))[1]
         self.host = env_to_hostname(environment)
         self.cert_file = cert_file
         self.key_file = key_file
-        self.socket = None
         self.buffer = bytearray()
         self.w_buffer = bytearray()
         self.ping_id = None
