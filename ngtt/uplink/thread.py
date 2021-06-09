@@ -2,7 +2,7 @@ import logging
 from concurrent.futures import Future
 
 import minijson
-from satella.coding import wraps, for_argument
+from satella.coding import wraps, for_argument, silence_excs
 from satella.coding.optionals import Optional
 from satella.coding.predicates import x
 from satella.coding.sequences import index_of
@@ -81,11 +81,9 @@ class NGTTConnection(TerminableThread):
             self.op_id_to_op = {}
 
     @property
+    @silence_excs(AttributeError, returns=False)
     def connected(self) -> bool:
-        try:
-            return self.current_connection.connected
-        except AttributeError:      # current_connection is a None
-            return False
+        return self.current_connection.connected
 
     def connect(self):
         if self.connected:
