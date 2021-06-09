@@ -55,6 +55,7 @@ class NGTTConnection(TerminableThread):
         self.current_connection = None
         self.currently_running_ops = []  # type: tp.List[tp.Tuple[NGTTHeaderType, bytes, Future]]
         self.op_id_to_op = {}  # type: tp.Dict[int, Future]
+        logger.info('NGTT starting up')
         self.start()
 
     def stop(self, wait_for_completion: bool = True):
@@ -152,7 +153,7 @@ class NGTTConnection(TerminableThread):
                     fut.set_result(None)
                 elif frame.packet_type == NGTTHeaderType.DATA_STREAM_REJECT:
                     fut.set_exception(DataStreamSyncFailed())
-        elif packet_type == NGTTHeaderType.SYNC_BAOB_RESPONSE:
+        elif frame.packet_type == NGTTHeaderType.SYNC_BAOB_RESPONSE:
             if frame.tid in self.op_id_to_op:
                 fut = self.op_id_to_op.pop(frame.tid)
 
@@ -165,11 +166,12 @@ class NGTTConnection(TerminableThread):
         try:
             while not self.connected and not self.terminating:
                 self.connect()
+                logger.debug('Reconnecting')
             if self.terminating:
                 return
             self.inner_loop()
-        except ConnectionFailed:
-            logger.debug('Connection failed, retrying')
+        except ConnectionFailed as e:
+            logger.debug('Connection failed, retrying', exc_info=e)
             self.cleanup()
             try:
                 self.connect()

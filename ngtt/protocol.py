@@ -53,9 +53,5 @@ class NGTTFrame:
 
 
 def env_to_hostname(env: int) -> str:
-    if env == 0:
-        return 'api.smok.co'
-    elif env == 1:
-        return 'api.test.smok-serwis.pl'
-    else:
-        return 'http-api'
+    return {0: 'api.smok.co',
+            1: 'api.test.smok-serwis.pl'}.get(env, 'rapid-rs')
