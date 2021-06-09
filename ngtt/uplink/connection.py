@@ -13,7 +13,7 @@ from satella.coding.concurrent import IDAllocator
 from satella.files import read_in_file
 from satella.instrumentation import Traceback
 
-from .certificates import get_device_info, get_dev_ca_cert, get_root_cert
+from .certificates import get_device_info, get_dev_ca_cert, get_root_cert, get_ca_path
 from ..exceptions import ConnectionFailed
 from ..protocol import NGTTHeaderType, STRUCT_LHH, env_to_hostname, NGTTFrame
 
@@ -55,8 +55,6 @@ class NGTTSocket(Closeable):
                 chain_file.write(read_in_file(self.cert_file))
                 chain_file.write(b'\n')
                 chain_file.write(get_dev_ca_cert())
-                chain_file.write(b'\n')
-                chain_file.write(get_root_cert())
                 chain_file.close()
                 self.chain_file_name = chain_file.name
         except Exception as e:
@@ -172,7 +170,7 @@ class NGTTSocket(Closeable):
             if self.connected:
                 return
             ssl_context = SSLContext(PROTOCOL_TLS_CLIENT)
-            ssl_context.load_verify_locations(cadata=get_root_cert().decode('utf-8'))
+            ssl_context.load_verify_locations(capath=get_ca_path())
             ssl_context.load_cert_chain(self.chain_file_name, self.key_file)
             ssl_context.verify_mode = CERT_REQUIRED
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)

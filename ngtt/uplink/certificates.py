@@ -24,6 +24,11 @@ def get_cert(cert_name: str):
     return read_in_file(ca_file)
 
 
+def get_ca_path() -> str:
+    ca_file = pkg_resources.resource_filename(__name__, '../certs')
+    return ca_file
+
+
 def get_root_cert() -> bytes:
     """
     Return the bytes sequence for SMOK's master CA certificate
