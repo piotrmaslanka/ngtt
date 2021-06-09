@@ -149,6 +149,7 @@ class NGTTConnection(TerminableThread):
             try:
                 data = minijson.loads(frame.data)
             except ValueError:
+                logger.error('Received invalid JSON over the wire')
                 raise ConnectionFailed('Got invalid JSON')
             order = Order(data, frame.tid, self.current_connection)
             self.on_new_order(order)

@@ -3,6 +3,7 @@ import os
 import socket
 import ssl
 import tempfile
+import threading
 import time
 import typing as tp
 from ssl import SSLContext, PROTOCOL_TLS_CLIENT, SSLError, CERT_REQUIRED
@@ -39,6 +40,7 @@ class NGTTSocket(Closeable):
         logger.info('New connection %s %s', cert_file, key_file)
         self.socket = None
         self.connected = False
+        self.connection_lock = threading.Lock()
         environment = get_device_info(read_in_file(cert_file))[1]
         self.host = env_to_hostname(environment)
         logger.info('Environment is %s', environment)
@@ -161,24 +163,25 @@ class NGTTSocket(Closeable):
 
         :raises SSLError: an error occurred
         """
-        if self.connected:
-            return
-        ssl_context = SSLContext(PROTOCOL_TLS_CLIENT)
-        ssl_context.load_verify_locations(cadata=get_root_cert().decode('utf-8'))
-        ssl_context.load_cert_chain(self.chain_file_name, self.key_file)
-        ssl_context.verify_mode = CERT_REQUIRED
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.settimeout(10)
-        ssl_sock = ssl_context.wrap_socket(sock, server_hostname=self.host)
-        try:
-            ssl_sock.connect((self.host, 2408))
-            ssl_sock.do_handshake()
-        except (socket.error, SSLError) as e:
-            ssl_sock.close()
-            raise ConnectionFailed(True) from e
-        self.socket = ssl_sock
-        self.socket.setblocking(False)
-        self.last_read = time.monotonic()
-        self.buffer = bytearray()
-        self.w_buffer = bytearray()
-        self.connected = True
+        with self.connection_lock:
+            if self.connected:
+                return
+            ssl_context = SSLContext(PROTOCOL_TLS_CLIENT)
+            ssl_context.load_verify_locations(cadata=get_root_cert().decode('utf-8'))
+            ssl_context.load_cert_chain(self.chain_file_name, self.key_file)
+            ssl_context.verify_mode = CERT_REQUIRED
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.settimeout(10)
+            ssl_sock = ssl_context.wrap_socket(sock, server_hostname=self.host)
+            try:
+                ssl_sock.connect((self.host, 2408))
+                ssl_sock.do_handshake()
+            except (socket.error, SSLError) as e:
+                ssl_sock.close()
+                raise ConnectionFailed(True) from e
+            logger.debug('Successfully connected to %s', self.host)
+            self.socket = ssl_sock
+            self.socket.setblocking(False)
+            self.last_read = time.monotonic()
+            self.buffer = bytearray()
+            self.w_buffer = bytearray()
