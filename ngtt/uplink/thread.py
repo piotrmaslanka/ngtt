@@ -25,6 +25,7 @@ def must_be_connected(fun):
     def outer(self, *args, **kwargs):
         if self.current_connection is None:
             self.connect()
+            raise ConnectionFailed(True)
         return fun(self, *args, **kwargs)
 
     return outer
@@ -66,7 +67,7 @@ class NGTTConnection(TerminableThread):
         if wait_for_completion:
             self.join()
 
-    def cleanup(self):
+    def close(self):
         if self.current_connection is not None:
             self.connected = False
             self.current_connection.close()
@@ -81,6 +82,7 @@ class NGTTConnection(TerminableThread):
             try:
                 self.current_connection = NGTTSocket(self.cert_file, self.key_file)
                 self.current_connection.connect()
+                break
             except ConnectionFailed:
                 logger.debug('Failure reconnecting')
                 eb.failed()

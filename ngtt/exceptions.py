@@ -3,7 +3,11 @@ class NGTTError(Exception):
 
 
 class ConnectionFailed(NGTTError):
-    pass
+    """
+    :ivar is_due_to_no_internet: was this error caused by the internet not being there?
+    """
+    def __init__(self, is_due_to_no_internet: bool = False):
+        self.is_due_to_no_internet = is_due_to_no_internet
 
 
 class DataStreamSyncFailed(NGTTError):
