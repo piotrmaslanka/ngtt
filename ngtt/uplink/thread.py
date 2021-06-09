@@ -53,7 +53,6 @@ class NGTTConnection(TerminableThread):
         self.cert_file = cert_file
         self.stopped = False
         self.key_file = key_file
-        self.connected = False
         self.current_connection = None
         self.currently_running_ops = []  # type: tp.List[tp.Tuple[NGTTHeaderType, bytes, Future]]
         self.op_id_to_op = {}  # type: tp.Dict[int, Future]
@@ -81,6 +80,13 @@ class NGTTConnection(TerminableThread):
             self.current_connection = None
             self.op_id_to_op = {}
 
+    @property
+    def connected(self) -> bool:
+        try:
+            return self.current_connection.connected
+        except AttributeError:      # current_connection is a None
+            return False
+
     def connect(self):
         if self.connected:
             return
@@ -89,7 +95,6 @@ class NGTTConnection(TerminableThread):
             try:
                 self.current_connection = NGTTSocket(self.cert_file, self.key_file)
                 self.current_connection.connect()
-                self.connected = True
             except ConnectionFailed as e:
                 logger.warning('Failure reconnecting', exc_info=e)
                 eb.failed()
