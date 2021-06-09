@@ -109,7 +109,7 @@ class NGTTSocket(Closeable):
     @must_be_connected
     def recv_frame(self) -> tp.Optional[NGTTFrame]:
         """
-        Receive a frame from remote socket
+        Receive a frame from remote socket, or None if nothing could be assembled as of now.
 
         :raises ConnectionFailed: connection closed
         :return: a tuple of transaction ID, header type, data
@@ -128,18 +128,23 @@ class NGTTSocket(Closeable):
             return NGTTFrame(tid, NGTTHeaderType(h_type), data)
 
     def close(self, wait_for_me: bool = True):
-        is_closed = True
+        is_closed, connected, sock = True, False, '<nothing>'
         try:
             is_closed = self.closed
+            connected = self.connected
+            sock = self.socket
         except AttributeError:
             logger.info('Closing a noninitialized object')
             logger.warning(Traceback().pretty_print())
-        logger.info('Closing %s %s %s', is_closed, self.connected, self.socket)
+        logger.info('Closing %s %s %s', is_closed, connected, sock)
         if super().close():
             logger.info('Actually closing')
             self.disconnect()
             try:
                 os.unlink(self.chain_file_name)
+            except TypeError:
+                logger.error('Tried to close an uninitialized object')
+                logger.warning(Traceback().pretty_print())
             except OSError as e:
                 logger.error('Failure to remove certificate chain file %s', self.chain_file_name,
                              exc_info=e)
