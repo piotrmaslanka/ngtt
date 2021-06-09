@@ -53,9 +53,9 @@ class NGTTSocket(Closeable):
         self.last_read = None
         try:
             with tempfile.NamedTemporaryFile('wb', delete=False) as chain_file:
-                chain_file.write(read_in_file(self.cert_file))
-                chain_file.write(b'\n')
                 chain_file.write(get_dev_ca_cert())
+                chain_file.write(b'\n')
+                chain_file.write(get_root_cert())
                 chain_file.close()
                 self.chain_file_name = chain_file.name
         except Exception as e:
@@ -172,7 +172,7 @@ class NGTTSocket(Closeable):
                 return
             ssl_context = SSLContext(PROTOCOL_TLS_CLIENT)
             ssl_context.load_verify_locations(capath=get_ca_path())
-            ssl_context.load_cert_chain(self.chain_file_name, self.key_file)
+            ssl_context.load_cert_chain(self.cert_file, self.key_file)
             ssl_context.verify_mode = CERT_REQUIRED
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             sock.settimeout(10)
