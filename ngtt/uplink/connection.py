@@ -171,7 +171,7 @@ class NGTTSocket(Closeable):
             if self.connected:
                 return
             ssl_context = SSLContext(PROTOCOL_TLS_CLIENT)
-            ssl_context.load_verify_locations(capath=get_ca_path())
+            ssl_context.load_verify_locations(self.chain_file_name)
             ssl_context.load_cert_chain(self.cert_file, self.key_file)
             ssl_context.verify_mode = CERT_REQUIRED
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
