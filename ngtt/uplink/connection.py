@@ -1,3 +1,4 @@
+import logging
 import os
 import socket
 import ssl
@@ -9,12 +10,14 @@ from ssl import SSLContext, PROTOCOL_TLS_CLIENT, SSLError, CERT_REQUIRED
 from satella.coding import silence_excs, reraise_as, Closeable, wraps
 from satella.coding.concurrent import IDAllocator
 from satella.files import read_in_file
+from satella.instrumentation import Traceback
 
 from .certificates import get_device_info, get_dev_ca_cert, get_root_cert
 from ..exceptions import ConnectionFailed
 from ..protocol import NGTTHeaderType, STRUCT_LHH, env_to_hostname, NGTTFrame
 
 PING_INTERVAL_TIME = 30
+logger = logging.getLogger(__name__)
 
 
 def must_be_connected(fun):
@@ -125,9 +128,21 @@ class NGTTSocket(Closeable):
             return NGTTFrame(tid, NGTTHeaderType(h_type), data)
 
     def close(self, wait_for_me: bool = True):
+        is_closed = True
+        try:
+            is_closed = self.closed
+        except AttributeError:
+            logger.info('Closing a noninitialized object')
+            logger.warning(Traceback().pretty_print())
+        logger.info('Closing %s %s %s', is_closed, self.connected, self.socket)
         if super().close():
+            logger.info('Actually closing')
             self.disconnect()
-            os.unlink(self.chain_file_name)
+            try:
+                os.unlink(self.chain_file_name)
+            except OSError as e:
+                logger.error('Failure to remove certificate chain file %s', self.chain_file_name,
+                             exc_info=e)
 
     def disconnect(self):
         """
@@ -153,9 +168,12 @@ class NGTTSocket(Closeable):
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.settimeout(10)
         ssl_sock = ssl_context.wrap_socket(sock, server_hostname=self.host)
-        with reraise_as((socket.error, SSLError), ConnectionFailed):
+        try:
             ssl_sock.connect((self.host, 2408))
             ssl_sock.do_handshake()
+        except (socket.error, SSLError) as e:
+            ssl_sock.close()
+            raise ConnectionFailed(True) from e
         self.socket = ssl_sock
         self.socket.setblocking(False)
         self.last_read = time.monotonic()

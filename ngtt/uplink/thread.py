@@ -50,6 +50,7 @@ class NGTTConnection(TerminableThread):
         super().__init__(name='ngtt uplink')
         self.on_new_order = on_new_order
         self.cert_file = cert_file
+        self.stopped = False
         self.key_file = key_file
         self.connected = False
         self.current_connection = None
@@ -64,11 +65,15 @@ class NGTTConnection(TerminableThread):
 
         :param wait_for_completion: whether to wait for thread to terminate
         """
+        if self.stopped:
+            return
         self.terminate()
         if wait_for_completion:
             self.join()
+        self.stopped = True
 
     def close(self):
+        self.stop()
         if self.current_connection is not None:
             self.connected = False
             self.current_connection.close()
@@ -79,15 +84,17 @@ class NGTTConnection(TerminableThread):
         if self.connected:
             return
         eb = ExponentialBackoff(1, 30, self.safe_sleep)
-        while not self.terminating:
+        while not self.terminating and not self.connected:
             try:
                 self.current_connection = NGTTSocket(self.cert_file, self.key_file)
                 self.current_connection.connect()
-                break
             except ConnectionFailed:
                 logger.debug('Failure reconnecting')
                 eb.failed()
                 eb.sleep()
+
+        if self.terminating:
+            return
 
         self.op_id_to_op = {}
         for h_type, data, fut in self.currently_running_ops:
