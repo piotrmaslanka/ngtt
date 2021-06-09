@@ -3,6 +3,7 @@ from concurrent.futures import Future
 
 import minijson
 from satella.coding import wraps, for_argument
+from satella.coding.optionals import Optional
 from satella.coding.predicates import x
 from satella.coding.sequences import index_of
 from satella.instrumentation import Traceback
@@ -190,6 +191,10 @@ class NGTTConnection(TerminableThread):
                 self.connect()
             except ConnectionFailed:
                 pass
+
+    def cleanup(self):
+        Optional(self.current_connection).close()
+        self.current_connection = None
 
     @must_be_connected
     @for_argument(None, encode_data)

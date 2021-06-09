@@ -10,6 +10,7 @@ from ssl import SSLContext, PROTOCOL_TLS_CLIENT, SSLError, CERT_REQUIRED
 
 from satella.coding import silence_excs, reraise_as, Closeable, wraps
 from satella.coding.concurrent import IDAllocator
+from satella.coding.optionals import Optional
 from satella.files import read_in_file
 from satella.instrumentation import Traceback
 
