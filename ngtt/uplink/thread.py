@@ -75,7 +75,6 @@ class NGTTConnection(TerminableThread):
     def close(self):
         self.stop()
         if self.current_connection is not None:
-            self.connected = False
             self.current_connection.close()
             self.current_connection = None
             self.op_id_to_op = {}
@@ -108,7 +107,6 @@ class NGTTConnection(TerminableThread):
             id_ = self.current_connection.id_assigner.allocate_int()
             self.current_connection.send_frame(id_, h_type, data)
             self.op_id_to_op[id_] = fut
-        self.connected = True
 
     @must_be_connected
     @for_argument(None, encode_data)
