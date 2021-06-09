@@ -41,19 +41,23 @@ class NGTTSocket(Closeable):
         self.connected = False
         environment = get_device_info(read_in_file(cert_file))[1]
         self.host = env_to_hostname(environment)
+        logger.info('Environment is %s', environment)
         self.cert_file = cert_file
         self.key_file = key_file
         self.buffer = bytearray()
         self.w_buffer = bytearray()
         self.ping_id = None
         self.last_read = None
-
-        with tempfile.NamedTemporaryFile('wb', delete=False) as chain_file:
-            chain_file.write(read_in_file(self.cert_file))
-            chain_file.write(b'\n')
-            chain_file.write(get_dev_ca_cert())
-            chain_file.write(b'\n')
-            chain_file.write(get_root_cert())
+        try:
+            with tempfile.NamedTemporaryFile('wb', delete=False) as chain_file:
+                chain_file.write(read_in_file(self.cert_file))
+                chain_file.write(b'\n')
+                chain_file.write(get_dev_ca_cert())
+                chain_file.write(b'\n')
+                chain_file.write(get_root_cert())
+        except Exception as e:
+            logger.error('Found exception %s', e, exc_info=e)
+            raise
         self.chain_file_name = chain_file.name
         self.id_assigner = IDAllocator(start_at=1)
         super().__init__()
