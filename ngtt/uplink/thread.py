@@ -1,6 +1,7 @@
 import logging
 from concurrent.futures import Future
 
+import minijson
 from satella.coding import wraps, for_argument
 from satella.coding.predicates import x
 from satella.coding.sequences import index_of
@@ -8,10 +9,6 @@ from satella.time import ExponentialBackoff
 
 from ..orders import Order
 
-try:
-    import ujson as json
-except ImportError:
-    import json
 import typing as tp
 import select
 from satella.coding.concurrent import TerminableThread
@@ -34,7 +31,7 @@ def must_be_connected(fun):
 
 
 def encode_data(y) -> bytes:
-    return json.dumps(y).encode('utf-8')
+    return minijson.dumps(y)
 
 
 class NGTTConnection(TerminableThread):
@@ -135,13 +132,13 @@ class NGTTConnection(TerminableThread):
             self.current_connection.got_ping()
         elif frame.packet_type == NGTTHeaderType.ORDER:
             try:
-                data = json.loads(frame.data.decode('utf-8'))
+                data = minijson.loads(frame.data)
             except ValueError:
                 raise ConnectionFailed('Got invalid JSON')
             order = Order(data, frame.tid, self.current_connection)
             self.on_new_order(order)
         elif frame.packet_type in (
-        NGTTHeaderType.DATA_STREAM_REJECT, NGTTHeaderType.DATA_STREAM_CONFIRM):
+                NGTTHeaderType.DATA_STREAM_REJECT, NGTTHeaderType.DATA_STREAM_CONFIRM):
             if frame.tid in self.op_id_to_op:
                 # Assume it's a data stream running
                 fut = self.op_id_to_op.pop(frame.tid)
