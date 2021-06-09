@@ -5,6 +5,7 @@ import minijson
 from satella.coding import wraps, for_argument
 from satella.coding.predicates import x
 from satella.coding.sequences import index_of
+from satella.instrumentation import Traceback
 from satella.time import ExponentialBackoff
 
 from ..orders import Order
@@ -88,8 +89,9 @@ class NGTTConnection(TerminableThread):
             try:
                 self.current_connection = NGTTSocket(self.cert_file, self.key_file)
                 self.current_connection.connect()
-            except ConnectionFailed:
-                logger.debug('Failure reconnecting')
+                self.connected = True
+            except ConnectionFailed as e:
+                logger.warning('Failure reconnecting', exc_info=e)
                 eb.failed()
                 eb.sleep()
 
