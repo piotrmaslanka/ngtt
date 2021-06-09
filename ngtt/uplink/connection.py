@@ -36,7 +36,9 @@ class NGTTSocket(Closeable):
         return bool(self.w_buffer)
 
     def __init__(self, cert_file: str, key_file: str):
+        logger.info('New connection %s %s', cert_file, key_file)
         self.socket = None
+        self.connected = False
         environment = get_device_info(read_in_file(cert_file))[1]
         self.host = env_to_hostname(environment)
         self.cert_file = cert_file
@@ -45,7 +47,6 @@ class NGTTSocket(Closeable):
         self.w_buffer = bytearray()
         self.ping_id = None
         self.last_read = None
-        self.connected = False
 
         with tempfile.NamedTemporaryFile('wb', delete=False) as chain_file:
             chain_file.write(read_in_file(self.cert_file))
@@ -128,15 +129,7 @@ class NGTTSocket(Closeable):
             return NGTTFrame(tid, NGTTHeaderType(h_type), data)
 
     def close(self, wait_for_me: bool = True):
-        is_closed, connected, sock = True, False, '<nothing>'
-        try:
-            is_closed = self.closed
-            connected = self.connected
-            sock = self.socket
-        except AttributeError:
-            logger.info('Closing a noninitialized object')
-            logger.warning(Traceback().pretty_print())
-        logger.info('Closing %s %s %s', is_closed, connected, sock)
+        logger.info('Closing %s %s %s', self.closed, self.connected, self.socket)
         if super().close():
             logger.info('Actually closing')
             self.disconnect()
