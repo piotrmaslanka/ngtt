@@ -184,9 +184,9 @@ class NGTTSocket(Closeable):
                 logger.error(Traceback().pretty_print())
                 ssl_sock.close()
                 raise ConnectionFailed(True) from e
-            logger.debug('Successfully connected to %s', self.host)
             self.socket = ssl_sock
             self.socket.setblocking(False)
             self.last_read = time.monotonic()
             self.buffer = bytearray()
             self.w_buffer = bytearray()
+            self.connected = True
