@@ -164,8 +164,11 @@ class NGTTSocket(Closeable):
         Connect to remote host
 
         :raises SSLError: an error occurred
+        :raises RuntimeError: upon connection being closed
         """
         with self.connection_lock:
+            if self.closed:
+                raise RuntimeError('This connection is closed!')
             if self.connected:
                 return
             ssl_context = SSLContext(PROTOCOL_TLS_CLIENT)
