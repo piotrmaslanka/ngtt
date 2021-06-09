@@ -34,7 +34,6 @@ class NGTTSocket(Closeable):
 
     def __init__(self, cert_file: str, key_file: str):
         self.socket = None
-        super().__init__()
         environment = get_device_info(read_in_file(cert_file))[1]
         self.host = env_to_hostname(environment)
         self.cert_file = cert_file
@@ -53,6 +52,7 @@ class NGTTSocket(Closeable):
             chain_file.write(get_root_cert())
         self.chain_file_name = chain_file.name
         self.id_assigner = IDAllocator(start_at=1)
+        super().__init__()
 
     @reraise_as(ssl.SSLError, ConnectionFailed)
     @silence_excs(ssl.SSLWantWriteError)
