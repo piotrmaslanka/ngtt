@@ -78,6 +78,7 @@ class NGTTSocket(Closeable):
         """
         if self.closed:
             return
+        logger.debug('Sending %s', NGTTFrame(tid, header, data))
         self.w_buffer.extend(STRUCT_LHH.pack(len(data), tid, header.value))
         self.w_buffer.extend(data)
         data_sent = self.socket.send(self.w_buffer)

@@ -31,6 +31,12 @@ class NGTTFrame:
         self.packet_type = packet_type
         self.data = data
 
+    def __repr__(self) -> str:
+        return f'NGTTFrame({self.tid}, {self.packet_type}, {self.data})'
+
+    def __str__(self) -> str:
+        return repr(self)
+
     @property
     def real_data(self) -> tp.Union[dict, list]:
         """

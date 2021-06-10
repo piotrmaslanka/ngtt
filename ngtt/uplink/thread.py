@@ -106,6 +106,7 @@ class NGTTConnection(TerminableThread):
             id_ = self.current_connection.id_assigner.allocate_int()
             self.current_connection.send_frame(id_, h_type, data)
             self.op_id_to_op[id_] = fut
+        logger.debug('Successfully connected')
 
     @must_be_connected
     @for_argument(None, encode_data)
@@ -132,16 +133,21 @@ class NGTTConnection(TerminableThread):
         return fut
 
     def inner_loop(self):
+        logger.debug('Inner loop')
         self.current_connection.try_ping()
-        rx, wx, ex = select.select([self.current_connection], [
-            self.current_connection] if self.current_connection.wants_write else [], [], timeout=5)
+        ccon = [self.current_connection]
+        rx, wx, ex = select.select(ccon,
+                                   ccon if self.current_connection.wants_write else [], [],
+                                   timeout=5)
         if not rx:
             return
         if wx:
             self.current_connection.try_send()
         frame = self.current_connection.recv_frame()
         if frame is None:
+            logger.debug('Received nothing')
             return
+        logger.debug('Received %s', frame)
         if frame.packet_type == NGTTHeaderType.PING:
             self.current_connection.got_ping()
         elif frame.packet_type == NGTTHeaderType.ORDER:
